@@ -1,11 +1,10 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::video::Window;
 
-// 3d stuffs
+// `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
+// position. It only has the functions it needs, so I usually add functions to it as I go instead
+// of adding basic arithematic ahead of time like + - * /
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vec3f {
     x: f32,
@@ -16,13 +15,13 @@ pub struct Vec3f {
 impl Vec3f {
     pub fn x(&self) -> f32 {
         self.x
-    } // this is probably not
+    }
     pub fn y(&self) -> f32 {
         self.y
-    } // proper in rust but i
+    }
     pub fn z(&self) -> f32 {
         self.z
-    } // do NOT give a shit!!
+    }
 
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
@@ -57,6 +56,8 @@ impl Vec3f {
     }
 }
 
+// `Triangle` implementation, this is a simple struct for storing the data of a triangle, I may add
+// color soon but right now this can do basic computation of triangle-related things.
 #[derive(Clone, Debug)]
 pub struct Triangle {
     v1: Vec3f,
@@ -107,12 +108,15 @@ impl Triangle {
     }
 }
 
+// The `Camera` struct doesn't do much, it just stores the camera's info in a nice little package.
 pub struct Camera {
     pos: Vec3f, // x y z
     rot: Vec3f, // pitch roll yaw
     fov: f32,
 }
 
+// The `Geometry` struct contains the geometry but it also transforms the geometry to having the
+// camera as the origin.
 pub struct Geometry {
     triangles: Vec<Triangle>,
 }
@@ -128,7 +132,13 @@ impl Geometry {
     }
 }
 
-fn render(
+// The `render` function will take your `Window`, `EventPump`, `Geometry`, and `Camera` and will
+// draw directly onto the window without a renderer. This saves time (maybe?) because it doesn't
+// need a 2d rendering engine such as opengl running underneath. This is basically the entire code
+// for the rendering engine and is very delicate, so if you're opening a pull request, make sure
+// that you don't fuck up this function! There's also a lot of development shit here too, don't
+// delete that because otherwise I'll forget everything about this function.
+pub fn render(
     window: &mut Window,
     event_pump: &sdl2::EventPump,
     geometry: &Geometry,
@@ -180,6 +190,7 @@ fn render(
     surface.finish()
 }
 
+// Behold, the shitty cargo tests that I have made.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +198,7 @@ mod tests {
     use sdl2::keyboard::Keycode;
     use std::time::Duration;
 
+    // Tests triangle normal calculation using a predefined triangle and expected normal.
     #[test]
     fn triangle_normal_test() {
         let v1 = Vec3f::new(0.0, 0.0, 0.0);
@@ -198,8 +210,9 @@ mod tests {
         assert_eq!(n, Vec3f::new(0.0, 4.0, 0.0));
     }
 
+    // Tests the point in triangle function using a predefined triangle and expected result.
     #[test]
-    fn pain() {
+    fn point_in_triangle_test() {
         let v1 = Vec3f::new(0.0, 0.0, 0.0);
         let v2 = Vec3f::new(0.0, 0.0, 2.0);
         let v3 = Vec3f::new(2.0, 0.0, 0.0);
@@ -208,6 +221,10 @@ mod tests {
         assert!(t.point_in_triangle(p));
     }
 
+    // I know that I'm not supposed to be running sdl2 type shit here, this should actually
+    // probably be an exmaple, but there's really no other way of testing the rendering function.
+    // This will also catch any crashes that may occur due to OOM or other shit that I forgot
+    // about.
     #[test]
     fn render_test() -> Result<(), String> {
         let width = 500;
