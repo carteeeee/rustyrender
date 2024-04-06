@@ -57,8 +57,9 @@ impl Vec3f {
 }
 
 // `Triangle` implementation, this is a simple struct for storing the data of a triangle, I may add
-// color soon but right now this can do basic computation of triangle-related things.
-#[derive(Clone, Debug)]
+// color soon but right now this can do basic computation of triangle-related things. Also, this is
+// used to store three normals lmao.
+#[derive(Copy, Clone, Debug)]
 pub struct Triangle {
     v1: Vec3f,
     v2: Vec3f,
@@ -117,18 +118,21 @@ pub struct Camera {
 
 // The `Geometry` struct contains the geometry but it also transforms the geometry to having the
 // camera as the origin.
+
+#[derive(Clone)]
 pub struct Geometry {
     triangles: Vec<Triangle>,
 }
 
 impl Geometry {
-    fn origin_to_camera(&mut self, camera: &Camera) {
+    fn origin_to_camera(&self, camera: &Camera) -> Self {
         let origin = camera.pos;
         let rotation = camera.rot;
-
-        for triangle in &mut self.triangles {
+        let mut newgeo = self.clone();
+        for triangle in &mut newgeo.triangles {
             triangle.new_origin(origin);
         }
+        newgeo
     }
 }
 
@@ -147,29 +151,24 @@ pub fn render(
 ) -> Result<(), String> {
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
-
+    let newgeo = geometry.origin_to_camera(&camera);
     surface.fill_rect(srect, Color::RGB(0, 0, 0))?;
 
     for x in 0..srect.width() {
         for y in 0..srect.height() {
-            let pitch = ((y as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
-            let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov + ticks + 180.0)
-                .to_radians();
+            let pitch =
+                ((y as f32 / srect.height() as f32 - 0.5) * camera.fov + 40.0 + ticks).to_radians();
+            let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov + 180.0).to_radians();
             let dir = Vec3f::new(
-                //-yaw.cos() * pitch.sin() * roll.sin() - yaw.sin() * roll.cos(),
-                //-yaw.sin() * pitch.sin() * roll.sin() + yaw.cos() * roll.cos(),
-                //pitch.cos() * roll.sin(),
                 yaw.cos() * pitch.cos(),
                 yaw.sin() * pitch.cos(),
                 pitch.sin(),
             )
             .mult(0.25);
-            //println!("{:?}", dir);
-            //println!("{:?}", Vec3f::new(pitch, roll, yaw));
             let mut res: u8 = 100;
-            'rtx: for z in 0..100 {
+            'rtx: for z in 0..50 {
                 let raypos = dir.mult(z as f32);
-                for triangle in &geometry.triangles {
+                for triangle in &newgeo.triangles {
                     if triangle.point_in_triangle(raypos) {
                         res = z;
                         break 'rtx;
@@ -237,27 +236,32 @@ mod tests {
             .position_centered()
             .build()
             .map_err(|e| e.to_string())?;
-        let timer = sdl_context.timer()?;
         let mut event_pump = sdl_context.event_pump()?;
 
-        let v1 = Vec3f::new(0.0, 10.0, 10.0);
-        let v2 = Vec3f::new(1.5, -0.2, 1.5);
-        let v3 = Vec3f::new(0.4, -1.3, -0.7);
+        let v11 = Vec3f::new(0.0, 0.0, 1.0);
+        let v21 = Vec3f::new(1.0, 0.0, 1.0);
+        let v31 = Vec3f::new(0.0, 1.0, 1.0);
 
-        let triangle = Triangle::from_points(v1, v2, v3);
+        let triangle1 = Triangle::from_points(v11, v21, v31);
+
+        let v12 = Vec3f::new(1.0, 0.0, 1.0);
+        let v22 = Vec3f::new(0.0, 1.0, 1.0);
+        let v32 = Vec3f::new(1.0, 1.0, 1.0);
+
+        let triangle2 = Triangle::from_points(v12, v22, v32);
+
         let mut geometry = Geometry {
-            triangles: vec![triangle],
+            triangles: vec![triangle1, triangle2],
         };
 
-        let camera = Camera {
-            pos: Vec3f::new(7.0, -6.0, 4.0),
+        let mut camera = Camera {
+            pos: Vec3f::new(5.0, 0.0, -5.0),
             rot: Vec3f::new(65.0, 0.0, 46.0),
-            fov: 40.0,
+            fov: 50.0,
         };
 
-        geometry.origin_to_camera(&camera);
-        let mut ticks: f32 = 0.0;
-        println!("{:?}", geometry.triangles[0].v1);
+        let mut ticks = 0.0;
+
         'running: loop {
             for event in event_pump.poll_iter() {
                 match event {
@@ -269,8 +273,8 @@ mod tests {
                     _ => {}
                 }
             }
-            //let ticks = timer.ticks() as i32;
-            ticks -= 10.0;
+            camera.pos.z -= 1.0;
+            ticks += 1.0;
             render(&mut window, &event_pump, &geometry, &camera, ticks)?;
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
