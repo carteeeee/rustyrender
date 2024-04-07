@@ -1,5 +1,4 @@
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
 use sdl2::video::Window;
 
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
@@ -35,18 +34,6 @@ impl Vec3f {
         }
     }
 
-    fn cross(&self, target: &Self) -> Self {
-        Self {
-            x: self.y * target.z - self.z * target.y,
-            y: self.z * target.x - self.x * target.z,
-            z: self.x * target.y - self.y * target.x,
-        }
-    }
-
-    fn dot(&self, target: &Self) -> f32 {
-        self.x * target.x + self.y * target.y + self.z * target.z
-    }
-
     fn mult(&self, num: f32) -> Self {
         Self {
             x: self.x * num,
@@ -71,41 +58,64 @@ impl Triangle {
         Self { v1, v2, v3 }
     }
 
-    fn normal(&self) -> Vec3f {
-        let u = self.v2.sub(&self.v1);
-        let v = self.v3.sub(&self.v1);
-        u.cross(&v)
-    }
-
-    fn multiple_normals(&self, point: Vec3f) -> Self {
-        let t1 = Self::from_points(point, self.v1, self.v2);
-        let t2 = Self::from_points(point, self.v2, self.v3);
-        let t3 = Self::from_points(point, self.v3, self.v1);
-
-        Self {
-            v1: t1.normal(),
-            v2: t2.normal(),
-            v3: t3.normal(),
-        }
-    }
-
+    // The star of the show, the `point_in_triangle` function. This tells wether the ray has
+    // reached the triangle, and returns false if no and true if yes. If you can optimize this even
+    // more, please do! Right now it's taking approx 100ms to render a full frame at 200x200. With
+    // optimizations enabled (release mode), it takes 18ns to run and with debug it takes 22ns to
+    // run.
     fn point_in_triangle(&self, point: Vec3f) -> bool {
-        let n = self.multiple_normals(point);
+        // compute normals for the following tris:
+        // point, v1, v2
+        // point, v2, v3
+        // point, v3, v1
+        let u1x = self.v1.x - point.x;
+        let u1y = self.v1.y - point.y;
+        let u1z = self.v1.z - point.z;
 
-        if n.v1.dot(&n.v2) < 0.0 {
+        let v1x = self.v2.x - point.x;
+        let v1y = self.v2.y - point.y;
+        let v1z = self.v2.z - point.z;
+
+        let n1x = u1y * v1z - u1z * v1y;
+        let n1y = u1z * v1x - u1x * v1z;
+        let n1z = u1x * v1y - u1y * v1x;
+
+        let u2x = self.v2.x - point.x;
+        let u2y = self.v2.y - point.y;
+        let u2z = self.v2.z - point.z;
+
+        let v2x = self.v3.x - point.x;
+        let v2y = self.v3.y - point.y;
+        let v2z = self.v3.z - point.z;
+
+        let n2x = u2y * v2z - u2z * v2y;
+        let n2y = u2z * v2x - u2x * v2z;
+        let n2z = u2x * v2y - u2y * v2x;
+
+        let u3x = self.v3.x - point.x;
+        let u3y = self.v3.y - point.y;
+        let u3z = self.v3.z - point.z;
+
+        let v3x = self.v1.x - point.x;
+        let v3y = self.v1.y - point.y;
+        let v3z = self.v1.z - point.z;
+
+        let n3x = u3y * v3z - u3z * v3y;
+        let n3y = u3z * v3x - u3x * v3z;
+        let n3z = u3x * v3y - u3y * v3x;
+
+        // determine if a point is within the triangle
+        let d1 = n1x * n2x + n1y * n2y + n1z * n2z;
+        if d1 < 0.0 {
             return false;
         }
-        if n.v1.dot(&n.v3) < 0.0 {
+
+        let d2 = n1x * n3x + n1y * n3y + n1z * n3z;
+        if d2 < 0.0 {
             return false;
         }
 
         true
-    }
-
-    fn new_origin(&mut self, origin: Vec3f) {
-        self.v1 = self.v1.sub(&origin);
-        self.v2 = self.v2.sub(&origin);
-        self.v3 = self.v3.sub(&origin);
     }
 }
 
@@ -125,12 +135,14 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    fn origin_to_camera(&self, camera: &Camera) -> Self {
+    fn origin_to_camera_and_scale(&self, camera: &Camera, scale: f32) -> Self {
         let origin = camera.pos;
-        let rotation = camera.rot;
+        let _rotation = camera.rot;
         let mut newgeo = self.clone();
         for triangle in &mut newgeo.triangles {
-            triangle.new_origin(origin);
+            triangle.v1 = triangle.v1.sub(&origin).mult(scale);
+            triangle.v2 = triangle.v2.sub(&origin).mult(scale);
+            triangle.v3 = triangle.v3.sub(&origin).mult(scale);
         }
         newgeo
     }
@@ -149,10 +161,23 @@ pub fn render(
     camera: &Camera,
     ticks: f32,
 ) -> Result<(), String> {
+    let scale = 0.5;
+
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
-    let newgeo = geometry.origin_to_camera(&camera);
-    surface.fill_rect(srect, Color::RGB(0, 0, 0))?;
+    let _newgeo = geometry.origin_to_camera_and_scale(&camera, scale);
+    let _ = surface.fill_rect(srect, Color::RGB(0, 0, 0));
+
+    let sw = surface.width();
+    let pixel_format = surface.pixel_format_enum();
+    let surface_data = surface.without_lock_mut().unwrap();
+    let bpp = pixel_format.byte_size_per_pixel();
+
+    let v11 = Vec3f::new(0.0, 0.0, 1.0);
+    let v21 = Vec3f::new(1.0, 0.0, 1.0);
+    let v31 = Vec3f::new(0.0, 1.0, 1.0);
+
+    let triangle1 = Triangle::from_points(v11, v21, v31);
 
     for x in 0..srect.width() {
         for y in 0..srect.height() {
@@ -164,25 +189,27 @@ pub fn render(
                 yaw.sin() * pitch.cos(),
                 pitch.sin(),
             )
-            .mult(0.25);
+            .mult(0.1 * scale);
+            let index = (y * sw + x) as usize * bpp;
+
             let mut res: u8 = 100;
-            'rtx: for z in 0..50 {
+            'rtx: for z in 0..100 {
                 let raypos = dir.mult(z as f32);
-                for triangle in &newgeo.triangles {
-                    if triangle.point_in_triangle(raypos) {
-                        res = z;
-                        break 'rtx;
-                    }
+                //for i in 0..newgeo.triangles.len() {
+                let a = triangle1.point_in_triangle(raypos);
+                if a {
+                    res = z;
+                    break 'rtx;
                 }
+                //}
                 if z == 100 {
                     res = z;
                     break 'rtx;
                 }
             }
-            surface.fill_rect(
-                Rect::new(x as i32, y as i32, 1, 1),
-                Color::RGB(res, res, res),
-            )?;
+            surface_data[index] = res;
+            surface_data[index + 1] = res;
+            surface_data[index + 2] = res;
         }
     }
     println!("help me");
@@ -196,18 +223,6 @@ mod tests {
     use sdl2::event::Event;
     use sdl2::keyboard::Keycode;
     use std::time::Duration;
-
-    // Tests triangle normal calculation using a predefined triangle and expected normal.
-    #[test]
-    fn triangle_normal_test() {
-        let v1 = Vec3f::new(0.0, 0.0, 0.0);
-        let v2 = Vec3f::new(0.0, 0.0, 2.0);
-        let v3 = Vec3f::new(2.0, 0.0, 0.0);
-        let t = Triangle::from_points(v1, v2, v3);
-        let n = t.normal();
-        println!("{:?}", n);
-        assert_eq!(n, Vec3f::new(0.0, 4.0, 0.0));
-    }
 
     // Tests the point in triangle function using a predefined triangle and expected result.
     #[test]
@@ -250,7 +265,7 @@ mod tests {
 
         let triangle2 = Triangle::from_points(v12, v22, v32);
 
-        let mut geometry = Geometry {
+        let geometry = Geometry {
             triangles: vec![triangle1, triangle2],
         };
 
@@ -275,7 +290,11 @@ mod tests {
             }
             camera.pos.z -= 1.0;
             ticks += 1.0;
+
+            //let now = Instant::now();
             render(&mut window, &event_pump, &geometry, &camera, ticks)?;
+            //let elapsed = now.elapsed();
+            //println!("Elapsed: {:.2?}", elapsed);
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
 
