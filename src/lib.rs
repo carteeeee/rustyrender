@@ -1,5 +1,6 @@
 use sdl2::pixels::Color;
 use sdl2::video::Window;
+use std::time::Instant;
 
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
 // position. It only has the functions it needs, so I usually add functions to it as I go instead
@@ -289,10 +290,10 @@ mod tests {
             camera.pos.z -= 1.0;
             ticks += 1.0;
 
-            //let now = Instant::now();
+            let now = Instant::now();
             render(&mut window, &event_pump, &geometry, &camera, ticks)?;
-            //let elapsed = now.elapsed();
-            //println!("Elapsed: {:.2?}", elapsed);
+            let elapsed = now.elapsed();
+            println!("Elapsed: {:.2?}", elapsed);
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
 
