@@ -163,7 +163,7 @@ pub fn render(
 ) -> Result<(), String> {
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
-    let _newgeo = geometry.origin_to_camera_and_scale(&camera, scale);
+    let _newgeo = geometry.origin_to_camera_and_scale(&camera);
     let _ = surface.fill_rect(srect, Color::RGB(0, 0, 0));
 
     let sw = surface.width();
