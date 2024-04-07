@@ -135,14 +135,14 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    fn origin_to_camera_and_scale(&self, camera: &Camera, scale: f32) -> Self {
+    fn origin_to_camera_and_scale(&self, camera: &Camera) -> Self {
         let origin = camera.pos;
         let _rotation = camera.rot;
         let mut newgeo = self.clone();
         for triangle in &mut newgeo.triangles {
-            triangle.v1 = triangle.v1.sub(&origin).mult(scale);
-            triangle.v2 = triangle.v2.sub(&origin).mult(scale);
-            triangle.v3 = triangle.v3.sub(&origin).mult(scale);
+            triangle.v1 = triangle.v1.sub(&origin);
+            triangle.v2 = triangle.v2.sub(&origin);
+            triangle.v3 = triangle.v3.sub(&origin);
         }
         newgeo
     }
@@ -161,8 +161,6 @@ pub fn render(
     camera: &Camera,
     ticks: f32,
 ) -> Result<(), String> {
-    let scale = 0.5;
-
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
     let _newgeo = geometry.origin_to_camera_and_scale(&camera, scale);
@@ -189,7 +187,7 @@ pub fn render(
                 yaw.sin() * pitch.cos(),
                 pitch.sin(),
             )
-            .mult(0.1 * scale);
+            .mult(0.1);
             let index = (y * sw + x) as usize * bpp;
 
             let mut res: u8 = 100;
