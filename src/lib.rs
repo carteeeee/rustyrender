@@ -1,6 +1,5 @@
 use sdl2::pixels::Color;
 use sdl2::video::Window;
-use std::time::Instant;
 
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
 // position. It only has the functions it needs, so I usually add functions to it as I go instead
@@ -165,7 +164,6 @@ pub fn render(
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
     let _newgeo = geometry.origin_to_camera_and_scale(&camera);
-    let _ = surface.fill_rect(srect, Color::RGB(0, 0, 0));
 
     let sw = surface.width();
     let pixel_format = surface.pixel_format_enum();
@@ -222,6 +220,7 @@ mod tests {
     use sdl2::event::Event;
     use sdl2::keyboard::Keycode;
     use std::time::Duration;
+    use std::time::Instant;
 
     // Tests the point in triangle function using a predefined triangle and expected result.
     #[test]
@@ -245,6 +244,7 @@ mod tests {
         let sdl_context = sdl2::init()?;
         let video_subsystem = sdl_context.video()?;
 
+        println!("test");
         let mut window = video_subsystem
             .window("rustyrender test", width, height)
             .position_centered()

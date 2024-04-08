@@ -10,14 +10,14 @@ sdl2 = "0.36.0"
 
 [profile.test]
 incremental = true
-debug = "full"
+debug = true
 strip = "none"
 opt-level = 3
-lto = "thin"
+lto = "none"
 
 [profile.release]
 incremental = false
 strip = "symbols"
-debug = "none"
+debug = false
 opt-level = 3
 lto = "fat"
