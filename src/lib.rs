@@ -1,4 +1,3 @@
-use sdl2::pixels::Color;
 use sdl2::video::Window;
 
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
@@ -163,7 +162,7 @@ pub fn render(
 ) -> Result<(), String> {
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
-    let _newgeo = geometry.origin_to_camera_and_scale(&camera);
+    let newgeo = geometry.origin_to_camera_and_scale(&camera);
 
     let sw = surface.width();
     let pixel_format = surface.pixel_format_enum();
@@ -192,13 +191,13 @@ pub fn render(
             let mut res: u8 = 100;
             'rtx: for z in 0..100 {
                 let raypos = dir.mult(z as f32);
-                //for i in 0..newgeo.triangles.len() {
-                let a = triangle1.point_in_triangle(raypos);
-                if a {
-                    res = z;
-                    break 'rtx;
+                for i in 0..newgeo.triangles.len() {
+                    let a = newgeo.triangles[i].point_in_triangle(raypos);
+                    if a {
+                        res = z;
+                        break 'rtx;
+                    }
                 }
-                //}
                 if z == 100 {
                     res = z;
                     break 'rtx;
