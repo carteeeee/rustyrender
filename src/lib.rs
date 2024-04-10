@@ -1,8 +1,10 @@
+use sdl2::pixels::PixelFormatEnum;
 use sdl2::video::Window;
+use std::ops::{Add, Div, Mul, Sub};
 
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
-// position. It only has the functions it needs, so I usually add functions to it as I go instead
-// of adding basic arithematic ahead of time like + - * /
+// position. Addition and subtraction between Vec3fs is implemented and multiplication and division
+// are only implemented with an f32.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vec3f {
     x: f32,
@@ -24,20 +26,52 @@ impl Vec3f {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
+}
 
-    fn sub(&self, point: &Self) -> Self {
+impl Add<Vec3f> for Vec3f {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
         Self {
-            x: self.x - point.x,
-            y: self.y - point.y,
-            z: self.z - point.z,
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+            z: self.z + rhs.z,
         }
     }
+}
 
-    fn mult(&self, num: f32) -> Self {
+impl Sub<Vec3f> for Vec3f {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
         Self {
-            x: self.x * num,
-            y: self.y * num,
-            z: self.z * num,
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+            z: self.z - rhs.z,
+        }
+    }
+}
+
+impl Mul<f32> for Vec3f {
+    type Output = Self;
+
+    fn mul(self, rhs: f32) -> Self {
+        Self {
+            x: self.x * rhs,
+            y: self.y * rhs,
+            z: self.z * rhs,
+        }
+    }
+}
+
+impl Div<f32> for Vec3f {
+    type Output = Self;
+
+    fn div(self, rhs: f32) -> Self {
+        Self {
+            x: self.x / rhs,
+            y: self.y / rhs,
+            z: self.z / rhs,
         }
     }
 }
@@ -53,7 +87,7 @@ pub struct Triangle {
 }
 
 impl Triangle {
-    fn from_points(v1: Vec3f, v2: Vec3f, v3: Vec3f) -> Self {
+    pub fn from_points(v1: Vec3f, v2: Vec3f, v3: Vec3f) -> Self {
         Self { v1, v2, v3 }
     }
 
@@ -139,9 +173,9 @@ impl Geometry {
         let _rotation = camera.rot;
         let mut newgeo = self.clone();
         for triangle in &mut newgeo.triangles {
-            triangle.v1 = triangle.v1.sub(&origin);
-            triangle.v2 = triangle.v2.sub(&origin);
-            triangle.v3 = triangle.v3.sub(&origin);
+            triangle.v1 = triangle.v1 - origin;
+            triangle.v2 = triangle.v2 - origin;
+            triangle.v3 = triangle.v3 - origin;
         }
         newgeo
     }
@@ -158,7 +192,6 @@ pub fn render(
     event_pump: &sdl2::EventPump,
     geometry: &Geometry,
     camera: &Camera,
-    ticks: f32,
 ) -> Result<(), String> {
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
@@ -169,28 +202,24 @@ pub fn render(
     let surface_data = surface.without_lock_mut().unwrap();
     let bpp = pixel_format.byte_size_per_pixel();
 
-    let v11 = Vec3f::new(0.0, 0.0, 1.0);
-    let v21 = Vec3f::new(1.0, 0.0, 1.0);
-    let v31 = Vec3f::new(0.0, 1.0, 1.0);
-
-    let triangle1 = Triangle::from_points(v11, v21, v31);
+    if pixel_format != PixelFormatEnum::RGB888 && pixel_format != PixelFormatEnum::RGB24 {
+        panic!("gotta make it RGB, not RGBA lmaooooo");
+    }
 
     for x in 0..srect.width() {
         for y in 0..srect.height() {
-            let pitch =
-                ((y as f32 / srect.height() as f32 - 0.5) * camera.fov + 40.0 + ticks).to_radians();
-            let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov + 180.0).to_radians();
+            let pitch = ((y as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
+            let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
             let dir = Vec3f::new(
                 yaw.cos() * pitch.cos(),
                 yaw.sin() * pitch.cos(),
                 pitch.sin(),
-            )
-            .mult(0.1);
+            ) * 0.1;
             let index = (y * sw + x) as usize * bpp;
 
             let mut res: u8 = 100;
             'rtx: for z in 0..100 {
-                let raypos = dir.mult(z as f32);
+                let raypos = dir * z as f32;
                 for i in 0..newgeo.triangles.len() {
                     let a = newgeo.triangles[i].point_in_triangle(raypos);
                     if a {
@@ -208,7 +237,6 @@ pub fn render(
             surface_data[index + 2] = res;
         }
     }
-    println!("help me");
     surface.finish()
 }
 
@@ -273,8 +301,6 @@ mod tests {
             fov: 50.0,
         };
 
-        let mut ticks = 0.0;
-
         'running: loop {
             for event in event_pump.poll_iter() {
                 match event {
@@ -287,10 +313,9 @@ mod tests {
                 }
             }
             camera.pos.z -= 1.0;
-            ticks += 1.0;
 
             let now = Instant::now();
-            render(&mut window, &event_pump, &geometry, &camera, ticks)?;
+            render(&mut window, &event_pump, &geometry, &camera)?;
             let elapsed = now.elapsed();
             println!("Elapsed: {:.2?}", elapsed);
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
