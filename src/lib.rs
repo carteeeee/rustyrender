@@ -1,7 +1,7 @@
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::video::Window;
 use std::ops::{Add, Div, Mul, Sub};
-
+//use std::time::Instant;
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
 // position. Addition and subtraction between Vec3fs is implemented and multiplication and division
 // are only implemented with an f32.
@@ -77,8 +77,7 @@ impl Div<f32> for Vec3f {
 }
 
 // `Triangle` implementation, this is a simple struct for storing the data of a triangle, I may add
-// color soon but right now this can do basic computation of triangle-related things. Also, this is
-// used to store three normals lmao.
+// color soon but right now this can do basic computation of triangle-related things.
 #[derive(Copy, Clone, Debug)]
 pub struct Triangle {
     v1: Vec3f,
@@ -93,45 +92,43 @@ impl Triangle {
 
     // The star of the show, the `point_in_triangle` function. This tells wether the ray has
     // reached the triangle, and returns false if no and true if yes. If you can optimize this even
-    // more, please do! Right now it's taking approx 100ms to render a full frame at 200x200. With
-    // optimizations enabled (release mode), it takes 18ns to run and with debug it takes 22ns to
-    // run.
-    fn point_in_triangle(&self, point: Vec3f) -> bool {
+    // more, please do!
+    fn point_in_triangle(&self, rayx: f32, rayy: f32, rayz: f32) -> bool {
         // compute normals for the following tris:
         // point, v1, v2
         // point, v2, v3
         // point, v3, v1
-        let u1x = self.v1.x - point.x;
-        let u1y = self.v1.y - point.y;
-        let u1z = self.v1.z - point.z;
+        let u1x = self.v1.x - rayx;
+        let u1y = self.v1.y - rayy;
+        let u1z = self.v1.z - rayz;
 
-        let v1x = self.v2.x - point.x;
-        let v1y = self.v2.y - point.y;
-        let v1z = self.v2.z - point.z;
+        let v1x = self.v2.x - rayx;
+        let v1y = self.v2.y - rayy;
+        let v1z = self.v2.z - rayz;
 
         let n1x = u1y * v1z - u1z * v1y;
         let n1y = u1z * v1x - u1x * v1z;
         let n1z = u1x * v1y - u1y * v1x;
 
-        let u2x = self.v2.x - point.x;
-        let u2y = self.v2.y - point.y;
-        let u2z = self.v2.z - point.z;
+        let u2x = self.v2.x - rayx;
+        let u2y = self.v2.y - rayy;
+        let u2z = self.v2.z - rayz;
 
-        let v2x = self.v3.x - point.x;
-        let v2y = self.v3.y - point.y;
-        let v2z = self.v3.z - point.z;
+        let v2x = self.v3.x - rayx;
+        let v2y = self.v3.y - rayy;
+        let v2z = self.v3.z - rayz;
 
         let n2x = u2y * v2z - u2z * v2y;
         let n2y = u2z * v2x - u2x * v2z;
         let n2z = u2x * v2y - u2y * v2x;
 
-        let u3x = self.v3.x - point.x;
-        let u3y = self.v3.y - point.y;
-        let u3z = self.v3.z - point.z;
+        let u3x = self.v3.x - rayx;
+        let u3y = self.v3.y - rayy;
+        let u3z = self.v3.z - rayz;
 
-        let v3x = self.v1.x - point.x;
-        let v3y = self.v1.y - point.y;
-        let v3z = self.v1.z - point.z;
+        let v3x = self.v1.x - rayx;
+        let v3y = self.v1.y - rayy;
+        let v3z = self.v1.z - rayz;
 
         let n3x = u3y * v3z - u3z * v3y;
         let n3y = u3z * v3x - u3x * v3z;
@@ -159,29 +156,20 @@ pub struct Camera {
     fov: f32,
 }
 
-// The `Geometry` struct contains the geometry but it also transforms the geometry to having the
-// camera as the origin.
-
-#[derive(Clone)]
-pub struct Geometry {
-    triangles: Vec<Triangle>,
-}
-
-impl Geometry {
-    fn origin_to_camera_and_scale(&self, camera: &Camera) -> Self {
-        let origin = camera.pos;
-        let _rotation = camera.rot;
-        let mut newgeo = self.clone();
-        for triangle in &mut newgeo.triangles {
-            triangle.v1 = triangle.v1 - origin;
-            triangle.v2 = triangle.v2 - origin;
-            triangle.v3 = triangle.v3 - origin;
-        }
-        newgeo
+// There once was a struct called `Geometry` but I have killed him because he was useless.
+fn origin_to_camera(geometry: &Vec<Triangle>, camera: &Camera) -> Vec<Triangle> {
+    let origin = camera.pos;
+    let _rotation = camera.rot;
+    let mut newgeo = geometry.clone();
+    for triangle in &mut newgeo {
+        triangle.v1 = triangle.v1 - origin;
+        triangle.v2 = triangle.v2 - origin;
+        triangle.v3 = triangle.v3 - origin;
     }
+    newgeo
 }
 
-// The `render` function will take your `Window`, `EventPump`, `Geometry`, and `Camera` and will
+// The `render` function will take your `Window`, `EventPump`, `Vec<Triangle>` (geometry), and `Camera` and will
 // draw directly onto the window without a renderer. This saves time (maybe?) because it doesn't
 // need a 2d rendering engine such as opengl running underneath. This is basically the entire code
 // for the rendering engine and is very delicate, so if you're opening a pull request, make sure
@@ -190,12 +178,12 @@ impl Geometry {
 pub fn render(
     window: &mut Window,
     event_pump: &sdl2::EventPump,
-    geometry: &Geometry,
+    geometry: &Vec<Triangle>,
     camera: &Camera,
 ) -> Result<(), String> {
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
-    let newgeo = geometry.origin_to_camera_and_scale(&camera);
+    let newgeo = origin_to_camera(&geometry, &camera);
 
     let sw = surface.width();
     let pixel_format = surface.pixel_format_enum();
@@ -210,19 +198,25 @@ pub fn render(
         for y in 0..srect.height() {
             let pitch = ((y as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
             let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
-            let dir = Vec3f::new(
-                yaw.cos() * pitch.cos(),
-                yaw.sin() * pitch.cos(),
-                pitch.sin(),
-            ) * 0.1;
+            let dirx = yaw.cos() * pitch.cos() * 0.1;
+            let diry = yaw.sin() * pitch.sin() * 0.1;
+            let dirz = pitch.sin() * 0.1;
+
             let index = (y * sw + x) as usize * bpp;
 
             let mut res: u8 = 100;
             'rtx: for z in 0..100 {
-                let raypos = dir * z as f32;
-                for i in 0..newgeo.triangles.len() {
-                    let a = newgeo.triangles[i].point_in_triangle(raypos);
-                    if a {
+                let zf = z as f32;
+                let rayx = dirx * zf;
+                let rayy = diry * zf;
+                let rayz = dirz * zf;
+                for i in 0..newgeo.len() {
+                    let a = newgeo[i];
+                    //let now = Instant::now();
+                    let b = a.point_in_triangle(rayx, rayy, rayz);
+                    //let elapsed = now.elapsed();
+                    //println!("Elapsed: {:.2?}", elapsed);
+                    if b {
                         res = z;
                         break 'rtx;
                     }
@@ -247,7 +241,7 @@ mod tests {
     use sdl2::event::Event;
     use sdl2::keyboard::Keycode;
     use std::time::Duration;
-    use std::time::Instant;
+    //use std::time::Instant;
 
     // Tests the point in triangle function using a predefined triangle and expected result.
     #[test]
@@ -256,8 +250,7 @@ mod tests {
         let v2 = Vec3f::new(0.0, 0.0, 2.0);
         let v3 = Vec3f::new(2.0, 0.0, 0.0);
         let t = Triangle::from_points(v1, v2, v3);
-        let p = Vec3f::new(1.0, 0.0, 1.0);
-        assert!(t.point_in_triangle(p));
+        assert!(t.point_in_triangle(1.0, 0.0, 1.0));
     }
 
     // I know that I'm not supposed to be running sdl2 type shit here, this should actually
@@ -291,9 +284,7 @@ mod tests {
 
         let triangle2 = Triangle::from_points(v12, v22, v32);
 
-        let geometry = Geometry {
-            triangles: vec![triangle1, triangle2],
-        };
+        let geometry = vec![triangle1, triangle2];
 
         let mut camera = Camera {
             pos: Vec3f::new(5.0, 0.0, -5.0),
@@ -314,10 +305,10 @@ mod tests {
             }
             camera.pos.z -= 1.0;
 
-            let now = Instant::now();
+            //let now = Instant::now();
             render(&mut window, &event_pump, &geometry, &camera)?;
-            let elapsed = now.elapsed();
-            println!("Elapsed: {:.2?}", elapsed);
+            //let elapsed = now.elapsed();
+            //println!("Elapsed: {:.2?}", elapsed);
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
         }
 
