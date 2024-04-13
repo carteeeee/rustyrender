@@ -1,7 +1,49 @@
-use ocl::ProQue;
+use lazy_static::lazy_static;
+use ocl::{Buffer, ProQue};
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::video::Window;
 use std::ops::{Add, Div, Mul, Sub};
+use std::sync::Mutex;
+// All of the rendering is done on the gpu using this kernel. See the below `render` function for
+// more details.
+static KERNEL_SRC: &'static str = r#"
+    __kernel void render(
+                __global float const* const tris,
+                __global uint8* const out,
+                __private float const width)
+    {
+        uint const idx = get_global_id(0);
+        out[idx] = 0;
+    }
+"#;
+
+// please send help
+lazy_static! {
+    static ref PROQUE: Mutex<ProQue> = Mutex::new(
+        ProQue::builder()
+            .src(KERNEL_SRC)
+            .dims(1)
+            .build()
+            .expect("could not build proque")
+    );
+    static ref TRIBUFFER: Mutex<Buffer<f32>> = {
+        let proque = PROQUE.lock().unwrap();
+        let buf = proque
+            .create_buffer::<f32>()
+            .expect("could not create triangle buffer");
+        drop(proque);
+        Mutex::new(buf)
+    };
+    static ref OUTBUFFER: Mutex<Buffer<u8>> = {
+        let proque = PROQUE.lock().unwrap();
+        let buf = proque
+            .create_buffer::<u8>()
+            .expect("could not create output buffer");
+        drop(proque);
+        Mutex::new(buf)
+    };
+}
+
 //use std::time::Instant;
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
 // position. Addition and subtraction between Vec3fs is implemented and multiplication and division
@@ -207,11 +249,11 @@ pub fn render(
     camera: &Camera,
 ) -> Result<(), String> {
     let mut surface = window.surface(event_pump)?;
-    let srect = surface.rect();
     let newgeo = origin_to_camera(&geometry, &camera);
     let geopoints = geometry_to_points(&newgeo);
 
     let sw = surface.width();
+    let sh = surface.height();
     let pixel_format = surface.pixel_format_enum();
     let surface_data = surface.without_lock_mut().unwrap();
     let bpp = pixel_format.byte_size_per_pixel();
@@ -220,7 +262,47 @@ pub fn render(
         panic!("gotta make it RGB, not RGBA lmaooooo");
     }
 
-    for x in 0..srect.width() {
+    let mut proque = PROQUE.lock().unwrap();
+    let mut tribuffer = TRIBUFFER.lock().unwrap();
+    let mut outbuffer = OUTBUFFER.lock().unwrap();
+
+    println!("what");
+    proque.set_dims(sh * sw);
+
+    tribuffer
+        .write(&geopoints)
+        .enq()
+        .expect("could not write triangles to buffer");
+
+    /*
+        let kernel = proque
+            .kernel_builder("render")
+            .arg(&*tribuffer)
+            .arg(&*outbuffer)
+            .arg(&sw)
+            .build()
+            .expect("could not build kernel");
+    */
+    /*unsafe {
+        kernel.enq().expect("could not enque kernel"); // wow, unsafe code and expect in one line!
+                                                       // so much memory safety here
+    }*/
+
+    let mut outvec = vec![0u8; outbuffer.len()];
+    //outbuffer
+    //    .read(&mut outvec)
+    //    .enq()
+    //    .expect("could not read outbuffer");
+
+    for i in 0..outvec.len() {
+        let index = i * bpp;
+        let res = outvec[i];
+        surface_data[index] = res;
+        surface_data[index + 1] = res;
+        surface_data[index + 2] = res;
+    }
+
+    /*for x in 0..srect.width() {
         for y in 0..srect.height() {
             let pitch = ((y as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
             let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
@@ -256,7 +338,9 @@ pub fn render(
             surface_data[index + 1] = res;
             surface_data[index + 2] = res;
         }
-    }
+    }*/
+
+    println!("wtf am i doing");
     surface.finish()
 }
 
