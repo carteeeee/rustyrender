@@ -1,3 +1,4 @@
+use ocl::ProQue;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::video::Window;
 use std::ops::{Add, Div, Mul, Sub};
@@ -169,12 +170,36 @@ fn origin_to_camera(geometry: &Vec<Triangle>, camera: &Camera) -> Vec<Triangle> 
     newgeo
 }
 
+// not what it sounds like but it converts the geomtry (a buncha triangles) into a vector with the
+// triangles v1x v1y v1z v2x v2y and so on consecutively in the vector so that the gpu kernel has a
+// nice little vector of f32s to take in
+fn geometry_to_points(geometry: &Vec<Triangle>) -> Vec<f32> {
+    let mut output: Vec<f32> = Vec::new();
+    for triangle in geometry {
+        output.extend([
+            triangle.v1.x,
+            triangle.v1.y,
+            triangle.v1.z,
+            triangle.v2.x,
+            triangle.v2.y,
+            triangle.v2.z,
+            triangle.v3.x,
+            triangle.v3.y,
+            triangle.v3.z,
+        ]);
+    }
+    output
+}
+
 // The `render` function will take your `Window`, `EventPump`, `Vec<Triangle>` (geometry), and `Camera` and will
 // draw directly onto the window without a renderer. This saves time (maybe?) because it doesn't
 // need a 2d rendering engine such as opengl running underneath. This is basically the entire code
 // for the rendering engine and is very delicate, so if you're opening a pull request, make sure
 // that you don't fuck up this function! There's also a lot of development shit here too, don't
-// delete that because otherwise I'll forget everything about this function.
+// delete that because otherwise I'll forget everything about this function
+//
+// UPDATE: i am now adding gpu support using the `ocl` crate. forget everything you konw about this
+// function because it's bouta get the craziest glowup ever.
 pub fn render(
     window: &mut Window,
     event_pump: &sdl2::EventPump,
@@ -184,6 +209,7 @@ pub fn render(
     let mut surface = window.surface(event_pump)?;
     let srect = surface.rect();
     let newgeo = origin_to_camera(&geometry, &camera);
+    let geopoints = geometry_to_points(&newgeo);
 
     let sw = surface.width();
     let pixel_format = surface.pixel_format_enum();
