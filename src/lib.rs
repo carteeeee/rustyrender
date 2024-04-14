@@ -6,12 +6,60 @@ use std::ops::{Add, Div, Mul, Sub};
 // more details.
 static KERNEL_SRC: &'static str = r#"
     __kernel void render(
-                __global float const* const tris,
-                __global uint* const out,
-                __private uint const width)
+                __global float3 const* const tris,
+                __global uchar* const out,
+                __private float const fov,
+                __private uint const width,
+                __private uint const height,
+                __private ulong const numtris)
     {
+
         uint const idx = get_global_id(0);
-        out[idx/2] = 255;
+        float const x = idx % width;
+        float const y = idx / width;
+        float2 const edir = {
+            (x / width - 0.5) * fov,
+            (y / height - 0.5) * fov
+        };
+        float2 const edirr = radians(edir);
+        float3 const rdir = {
+            cos(edirr.x) * cos(edirr.y),
+            sin(edirr.x) * cos(edirr.y),
+            sin(edirr.y)
+        };
+
+        bool stop = false;
+        uint end = 0;
+        for (uint i = 0; (i < 100) && !stop; i++) {
+            float3 const raypos = rdir * (i / 0.1f);
+            end = i;
+            for (uint t = 0; (t < numtris) && !stop; t++) {
+                float3 const tv1 = tris[t];
+                float3 const tv2 = tris[t + 1];
+                float3 const tv3 = tris[t + 2];
+
+                float3 u1 = tv1 - raypos;
+                float3 v1 = tv2 - raypos;
+                float3 n1 = cross(u1, v1);
+
+                float3 u2 = tv2 - raypos;
+                float3 v2 = tv3 - raypos;
+                float3 n2 = cross(u2, v2);
+
+                float3 u3 = tv3 - raypos;
+                float3 v3 = tv1 - raypos;
+                float3 n3 = cross(u3, v3);
+
+                float d1 = dot(n1, n2);
+                float d2 = dot(n1, n3);
+
+                if (!(d1 < 0.0f) && !(d2 < 0.0f)) {
+                    stop = true;
+                    break;
+                }
+            }
+        }
+        out[idx] = end;
     }
 "#;
 
@@ -266,7 +314,10 @@ impl Renderer {
             .kernel_builder("render")
             .arg(&self.tribuf)
             .arg(&self.outbuf)
+            .arg(&camera.fov)
             .arg(&sw)
+            .arg(&sh)
+            .arg(1u64)
             .build()
             .expect("could not build kernel");
 
@@ -351,10 +402,10 @@ mod tests {
 
         let triangle2 = Triangle::from_points(v12, v22, v32);
 
-        let geometry = vec![triangle1, triangle2];
+        let geometry = vec![/*triangle1, */ triangle2];
 
         let mut camera = Camera {
-            pos: Vec3f::new(5.0, 0.0, -5.0),
+            pos: Vec3f::new(5.0, 0.0, -10.0),
             rot: Vec3f::new(65.0, 0.0, 46.0),
             fov: 50.0,
         };
@@ -372,7 +423,7 @@ mod tests {
                     _ => {}
                 }
             }
-            camera.pos.z -= 1.0;
+            camera.pos.x -= 1.0;
 
             //let now = Instant::now();
             renderer.render(&mut window, &event_pump, &geometry, &camera)?;
