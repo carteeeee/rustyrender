@@ -1,50 +1,20 @@
-use lazy_static::lazy_static;
 use ocl::{Buffer, ProQue};
-use sdl2::pixels::PixelFormatEnum;
+use sdl2::rect::Rect;
 use sdl2::video::Window;
 use std::ops::{Add, Div, Mul, Sub};
-use std::sync::Mutex;
 // All of the rendering is done on the gpu using this kernel. See the below `render` function for
 // more details.
 static KERNEL_SRC: &'static str = r#"
     __kernel void render(
                 __global float const* const tris,
-                __global uint8* const out,
-                __private float const width)
+                __global uint* const out,
+                __private uint const width)
     {
         uint const idx = get_global_id(0);
-        out[idx] = 0;
+        out[idx/2] = 255;
     }
 "#;
 
-// please send help
-lazy_static! {
-    static ref PROQUE: Mutex<ProQue> = Mutex::new(
-        ProQue::builder()
-            .src(KERNEL_SRC)
-            .dims(1)
-            .build()
-            .expect("could not build proque")
-    );
-    static ref TRIBUFFER: Mutex<Buffer<f32>> = {
-        let proque = PROQUE.lock().unwrap();
-        let buf = proque
-            .create_buffer::<f32>()
-            .expect("could not create triangle buffer");
-        drop(proque);
-        Mutex::new(buf)
-    };
-    static ref OUTBUFFER: Mutex<Buffer<u8>> = {
-        let proque = PROQUE.lock().unwrap();
-        let buf = proque
-            .create_buffer::<u8>()
-            .expect("could not create output buffer");
-        drop(proque);
-        Mutex::new(buf)
-    };
-}
-
-//use std::time::Instant;
 // `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
 // position. Addition and subtraction between Vec3fs is implemented and multiplication and division
 // are only implemented with an f32.
@@ -233,115 +203,103 @@ fn geometry_to_points(geometry: &Vec<Triangle>) -> Vec<f32> {
     output
 }
 
-// The `render` function will take your `Window`, `EventPump`, `Vec<Triangle>` (geometry), and `Camera` and will
-// draw directly onto the window without a renderer. This saves time (maybe?) because it doesn't
-// need a 2d rendering engine such as opengl running underneath. This is basically the entire code
-// for the rendering engine and is very delicate, so if you're opening a pull request, make sure
-// that you don't fuck up this function! There's also a lot of development shit here too, don't
-// delete that because otherwise I'll forget everything about this function
-//
-// UPDATE: i am now adding gpu support using the `ocl` crate. forget everything you konw about this
-// function because it's bouta get the craziest glowup ever.
-pub fn render(
-    window: &mut Window,
-    event_pump: &sdl2::EventPump,
-    geometry: &Vec<Triangle>,
-    camera: &Camera,
-) -> Result<(), String> {
-    let mut surface = window.surface(event_pump)?;
-    let newgeo = origin_to_camera(&geometry, &camera);
-    let geopoints = geometry_to_points(&newgeo);
+// using a struct for this because i need to store the ocl proque and buffers and maybe kernel too
+pub struct Renderer {
+    proque: ProQue,
+    tribuf: Buffer<f32>,
+    outbuf: Buffer<u8>,
+}
 
-    let sw = surface.width();
-    let sh = surface.height();
-    let pixel_format = surface.pixel_format_enum();
-    let surface_data = surface.without_lock_mut().unwrap();
-    let bpp = pixel_format.byte_size_per_pixel();
+impl Renderer {
+    pub fn new() -> Self {
+        let proque = ProQue::builder()
+            .src(KERNEL_SRC)
+            .dims(1 << 18)
+            .build()
+            .expect("could not build proque");
+        let tribuf = proque
+            .create_buffer::<f32>()
+            .expect("could not create triangle buffer");
+        let outbuf = proque
+            .create_buffer::<u8>()
+            .expect("could not create output buffer");
 
-    if pixel_format != PixelFormatEnum::RGB888 && pixel_format != PixelFormatEnum::RGB24 {
-        panic!("gotta make it RGB, not RGBA lmaooooo");
+        Self {
+            proque,
+            tribuf,
+            outbuf,
+        }
     }
 
-    let mut proque = PROQUE.lock().unwrap();
-    let mut tribuffer = TRIBUFFER.lock().unwrap();
-    let mut outbuffer = OUTBUFFER.lock().unwrap();
+    // The `render` function will take your `Window`, `EventPump`, `Vec<Triangle>` (geometry), and `Camera` and will
+    // draw directly onto the window without a renderer. This saves time (maybe?) because it doesn't
+    // need a 2d rendering engine such as opengl running underneath. This is basically the entire code
+    // for the rendering engine and is very delicate, so if you're opening a pull request, make sure
+    // that you don't fuck up this function! There's also a lot of development shit here too, don't
+    // delete that because otherwise I'll forget everything about this function
+    //
+    // UPDATE: i am now adding gpu support using the `ocl` crate. forget everything you konw about this
+    // function because it's bouta get the craziest glowup ever.
+    pub fn render(
+        &mut self,
+        window: &mut Window,
+        event_pump: &sdl2::EventPump,
+        geometry: &Vec<Triangle>,
+        camera: &Camera,
+    ) -> Result<(), String> {
+        let mut surface = window.surface(event_pump)?;
+        let newgeo = origin_to_camera(&geometry, &camera);
+        let geopoints = geometry_to_points(&newgeo);
 
-    println!("what");
-    proque.set_dims(sh * sw);
+        let sw = surface.width();
+        let sh = surface.height();
 
-    tribuffer
-        .write(&geopoints)
-        .enq()
-        .expect("could not write triangles to buffer");
+        //self.proque.set_dims(sh * sw);
 
-    /*
-        let kernel = proque
+        self.tribuf
+            .write(&geopoints)
+            .enq()
+            .expect("could not write triangles to buffer");
+
+        let kernel = self
+            .proque
             .kernel_builder("render")
-            .arg(&*tribuffer)
-            .arg(&*outbuffer)
+            .arg(&self.tribuf)
+            .arg(&self.outbuf)
             .arg(&sw)
             .build()
             .expect("could not build kernel");
-    */
-    /*unsafe {
-        kernel.enq().expect("could not enque kernel"); // wow, unsafe code and expect in one line!
-                                                       // so much memory safety here
-    }*/
 
-    let mut outvec = vec![0u8; outbuffer.len()];
-    //outbuffer
-    //    .read(&mut outvec)
-    //    .enq()
-    //    .expect("could not read outbuffer");
-
-    for i in 0..outvec.len() {
-        let index = i * bpp;
-        let res = outvec[i];
-        surface_data[index] = res;
-        surface_data[index + 1] = res;
-        surface_data[index + 2] = res;
-    }
-
-    /*for x in 0..srect.width() {
-        for y in 0..srect.height() {
-            let pitch = ((y as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
-            let yaw = ((x as f32 / srect.height() as f32 - 0.5) * camera.fov).to_radians();
-            let dirx = yaw.cos() * pitch.cos() * 0.1;
-            let diry = yaw.sin() * pitch.sin() * 0.1;
-            let dirz = pitch.sin() * 0.1;
-
-            let index = (y * sw + x) as usize * bpp;
-
-            let mut res: u8 = 100;
-            'rtx: for z in 0..100 {
-                let zf = z as f32;
-                let rayx = dirx * zf;
-                let rayy = diry * zf;
-                let rayz = dirz * zf;
-                for i in 0..newgeo.len() {
-                    let a = newgeo[i];
-                    //let now = Instant::now();
-                    let b = a.point_in_triangle(rayx, rayy, rayz);
-                    //let elapsed = now.elapsed();
-                    //println!("Elapsed: {:.2?}", elapsed);
-                    if b {
-                        res = z;
-                        break 'rtx;
-                    }
-                }
-                if z == 100 {
-                    res = z;
-                    break 'rtx;
-                }
-            }
-            surface_data[index] = res;
-            surface_data[index + 1] = res;
-            surface_data[index + 2] = res;
+        unsafe {
+            kernel.enq().expect("could not enque kernel"); // wow, unsafe code and expect in one line!
+                                                           // so much memory safety here
         }
-    }*/
 
-    println!("wtf am i doing");
-    surface.finish()
+        let mut outvec = vec![0u8; self.outbuf.len()];
+        self.outbuf
+            .read(&mut outvec)
+            .enq()
+            .expect("could not read outbuffer");
+
+        for i in 0..sw * sh {
+            let x = (i % sw) as i32;
+            let y = (i / sw) as i32;
+            let out = outvec[i as usize];
+            let _ = surface.fill_rect(Rect::new(x, y, 1, 1), (out, out, out).into());
+        }
+        /*
+        for y in 0..sh as i32 {
+            for x in 0..sw as i32 {
+                let index = (y * sw as i32 + x) as usize;
+                let out = outvec[index];
+                let _ = surface.fill_rect(Rect::new(x, y, 1, 1), (out, out, out).into());
+            }
+        }
+        */
+
+        println!("debug");
+        surface.finish()
+    }
 }
 
 // Behold, the shitty cargo tests that I have made.
@@ -374,7 +332,6 @@ mod tests {
         let sdl_context = sdl2::init()?;
         let video_subsystem = sdl_context.video()?;
 
-        println!("test");
         let mut window = video_subsystem
             .window("rustyrender test", width, height)
             .position_centered()
@@ -402,6 +359,8 @@ mod tests {
             fov: 50.0,
         };
 
+        let mut renderer = Renderer::new();
+
         'running: loop {
             for event in event_pump.poll_iter() {
                 match event {
@@ -416,7 +375,7 @@ mod tests {
             camera.pos.z -= 1.0;
 
             //let now = Instant::now();
-            render(&mut window, &event_pump, &geometry, &camera)?;
+            renderer.render(&mut window, &event_pump, &geometry, &camera)?;
             //let elapsed = now.elapsed();
             //println!("Elapsed: {:.2?}", elapsed);
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));

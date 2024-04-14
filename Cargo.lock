@@ -225,7 +225,6 @@ dependencies = [
 name = "rustyrender"
 version = "0.1.0"
 dependencies = [
- "lazy_static",
  "ocl",
  "sdl2",
 ]
