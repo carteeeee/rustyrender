@@ -2,7 +2,7 @@ use ocl::{Buffer, ProQue};
 use sdl2::rect::Rect;
 use sdl2::video::Window;
 use std::ops::{Add, Div, Mul, Sub};
-// All of the rendering is done on the gpu using this kernel. See the below `render` function for
+// all of the rendering is done on the gpu using this kernel. see the below `render` function for
 // more details.
 static KERNEL_SRC: &'static str = r#"
     __kernel void render(
@@ -63,8 +63,8 @@ static KERNEL_SRC: &'static str = r#"
     }
 "#;
 
-// `Vec3f` implementation, this is basically the type used for everything from 3d rotation to
-// position. Addition and subtraction between Vec3fs is implemented and multiplication and division
+// vector oh yeah!!! this is basically the type used for everything from 3d rotation to
+// position. addition and subtraction between Vec3fs is implemented and multiplication and division
 // are only implemented with an f32.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vec3f {
@@ -137,8 +137,8 @@ impl Div<f32> for Vec3f {
     }
 }
 
-// `Triangle` implementation, this is a simple struct for storing the data of a triangle, I may add
-// color soon but right now this can do basic computation of triangle-related things.
+// wow triangles so cool!! this is a simple struct for storing the data of a triangle, i may add
+// color soon:tm:
 #[derive(Copy, Clone, Debug)]
 pub struct Triangle {
     v1: Vec3f,
@@ -150,74 +150,16 @@ impl Triangle {
     pub fn from_points(v1: Vec3f, v2: Vec3f, v3: Vec3f) -> Self {
         Self { v1, v2, v3 }
     }
-
-    // The star of the show, the `point_in_triangle` function. This tells wether the ray has
-    // reached the triangle, and returns false if no and true if yes. If you can optimize this even
-    // more, please do!
-    fn point_in_triangle(&self, rayx: f32, rayy: f32, rayz: f32) -> bool {
-        // compute normals for the following tris:
-        // point, v1, v2
-        // point, v2, v3
-        // point, v3, v1
-        let u1x = self.v1.x - rayx;
-        let u1y = self.v1.y - rayy;
-        let u1z = self.v1.z - rayz;
-
-        let v1x = self.v2.x - rayx;
-        let v1y = self.v2.y - rayy;
-        let v1z = self.v2.z - rayz;
-
-        let n1x = u1y * v1z - u1z * v1y;
-        let n1y = u1z * v1x - u1x * v1z;
-        let n1z = u1x * v1y - u1y * v1x;
-
-        let u2x = self.v2.x - rayx;
-        let u2y = self.v2.y - rayy;
-        let u2z = self.v2.z - rayz;
-
-        let v2x = self.v3.x - rayx;
-        let v2y = self.v3.y - rayy;
-        let v2z = self.v3.z - rayz;
-
-        let n2x = u2y * v2z - u2z * v2y;
-        let n2y = u2z * v2x - u2x * v2z;
-        let n2z = u2x * v2y - u2y * v2x;
-
-        let u3x = self.v3.x - rayx;
-        let u3y = self.v3.y - rayy;
-        let u3z = self.v3.z - rayz;
-
-        let v3x = self.v1.x - rayx;
-        let v3y = self.v1.y - rayy;
-        let v3z = self.v1.z - rayz;
-
-        let n3x = u3y * v3z - u3z * v3y;
-        let n3y = u3z * v3x - u3x * v3z;
-        let n3z = u3x * v3y - u3y * v3x;
-
-        // determine if a point is within the triangle
-        let d1 = n1x * n2x + n1y * n2y + n1z * n2z;
-        if d1 < 0.0 {
-            return false;
-        }
-
-        let d2 = n1x * n3x + n1y * n3y + n1z * n3z;
-        if d2 < 0.0 {
-            return false;
-        }
-
-        true
-    }
 }
 
-// The `Camera` struct doesn't do much, it just stores the camera's info in a nice little package.
+// this only exists to store the camera's info in a nice little package.
 pub struct Camera {
     pos: Vec3f, // x y z
     rot: Vec3f, // pitch roll yaw
     fov: f32,
 }
 
-// There once was a struct called `Geometry` but I have killed him because he was useless.
+// there once was a struct called `Geometry` but I have killed him because he was fucking useless.
 fn origin_to_camera(geometry: &Vec<Triangle>, camera: &Camera) -> Vec<Triangle> {
     let origin = camera.pos;
     let _rotation = camera.rot;
@@ -251,7 +193,7 @@ fn geometry_to_points(geometry: &Vec<Triangle>) -> Vec<f32> {
     output
 }
 
-// using a struct for this because i need to store the ocl proque and buffers and maybe kernel too
+// using a struct for this because i need to store the ocl proque and buffers
 pub struct Renderer {
     proque: ProQue,
     tribuf: Buffer<f32>,
@@ -279,15 +221,12 @@ impl Renderer {
         }
     }
 
-    // The `render` function will take your `Window`, `EventPump`, `Vec<Triangle>` (geometry), and `Camera` and will
-    // draw directly onto the window without a renderer. This saves time (maybe?) because it doesn't
-    // need a 2d rendering engine such as opengl running underneath. This is basically the entire code
-    // for the rendering engine and is very delicate, so if you're opening a pull request, make sure
-    // that you don't fuck up this function! There's also a lot of development shit here too, don't
-    // delete that because otherwise I'll forget everything about this function
+    // the `render` function will take your `Window`, `EventPump`, `Vec<Triangle>` (geometry), and `Camera` and will
+    // draw directly onto the window without a renderer. this saves time (maybe?) because it doesn't
+    // need a 2d rendering engine such as opengl running underneath.
     //
-    // UPDATE: i am now adding gpu support using the `ocl` crate. forget everything you konw about this
-    // function because it's bouta get the craziest glowup ever.
+    // MAJOR update: i have now added gpu support. this was very painful and probably is very slow
+    // so please please PLEASE help make this faster!!!
     pub fn render(
         &mut self,
         window: &mut Window,
@@ -302,7 +241,7 @@ impl Renderer {
         let sw = surface.width();
         let sh = surface.height();
 
-        //self.proque.set_dims(sh * sw);
+        self.proque.set_dims(sh * sw);
 
         self.tribuf
             .write(&geopoints)
@@ -317,7 +256,7 @@ impl Renderer {
             .arg(&camera.fov)
             .arg(&sw)
             .arg(&sh)
-            .arg(1u64)
+            .arg(&geometry.len())
             .build()
             .expect("could not build kernel");
 
@@ -338,22 +277,12 @@ impl Renderer {
             let out = outvec[i as usize];
             let _ = surface.fill_rect(Rect::new(x, y, 1, 1), (out, out, out).into());
         }
-        /*
-        for y in 0..sh as i32 {
-            for x in 0..sw as i32 {
-                let index = (y * sw as i32 + x) as usize;
-                let out = outvec[index];
-                let _ = surface.fill_rect(Rect::new(x, y, 1, 1), (out, out, out).into());
-            }
-        }
-        */
 
-        println!("debug");
         surface.finish()
     }
 }
 
-// Behold, the shitty cargo tests that I have made.
+// behold, the shitty cargo tests i made.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,20 +291,8 @@ mod tests {
     use std::time::Duration;
     //use std::time::Instant;
 
-    // Tests the point in triangle function using a predefined triangle and expected result.
-    #[test]
-    fn point_in_triangle_test() {
-        let v1 = Vec3f::new(0.0, 0.0, 0.0);
-        let v2 = Vec3f::new(0.0, 0.0, 2.0);
-        let v3 = Vec3f::new(2.0, 0.0, 0.0);
-        let t = Triangle::from_points(v1, v2, v3);
-        assert!(t.point_in_triangle(1.0, 0.0, 1.0));
-    }
-
-    // I know that I'm not supposed to be running sdl2 type shit here, this should actually
-    // probably be an exmaple, but there's really no other way of testing the rendering function.
-    // This will also catch any crashes that may occur due to OOM or other shit that I forgot
-    // about.
+    // yeahhhh i'm probably not supposed to add sdl2 code in my tests but fuck it i don't give two
+    // shits.
     #[test]
     fn render_test() -> Result<(), String> {
         let width = 500;
