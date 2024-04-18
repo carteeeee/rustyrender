@@ -1,3 +1,4 @@
+use ocl::prm::Float3;
 use ocl::{Buffer, ProQue};
 use sdl2::rect::Rect;
 use sdl2::video::Window;
@@ -17,26 +18,24 @@ static KERNEL_SRC: &'static str = r#"
         uint const idx = get_global_id(0);
         float const x = idx % width;
         float const y = idx / width;
-        float2 const edir = {
-            (x / width - 0.5) * fov,
-            (y / height - 0.5) * fov
-        };
-        float2 const edirr = radians(edir);
+        float2 const edir = radians((float2)(
+            (x / (float)width - 0.5f) * fov,
+            (y / (float)height - 0.5f) * fov
+        ));
         float3 const rdir = {
-            cos(edirr.x) * cos(edirr.y),
-            sin(edirr.x) * cos(edirr.y),
-            sin(edirr.y)
+            cos(edir.x) * cos(edir.y) * 0.1f,
+            sin(edir.x) * sin(edir.y) * 0.1f,
+            sin(edir.y) * 0.1f
         };
 
         bool stop = false;
-        uint end = 0;
-        for (uint i = 0; (i < 100) && !stop; i++) {
-            float3 const raypos = rdir * (i / 0.1f);
-            end = i;
+        uchar end = 100;
+        for (uchar i = 0; (i < 100) && !stop; i++) {
+            float3 const raypos = rdir * (float)i;
             for (uint t = 0; (t < numtris) && !stop; t++) {
-                float3 const tv1 = tris[t];
-                float3 const tv2 = tris[t + 1];
-                float3 const tv3 = tris[t + 2];
+                float3 const tv1 = tris[t * 3];
+                float3 const tv2 = tris[t * 3 + 1];
+                float3 const tv3 = tris[t * 3 + 2];
 
                 float3 u1 = tv1 - raypos;
                 float3 v1 = tv2 - raypos;
@@ -50,10 +49,13 @@ static KERNEL_SRC: &'static str = r#"
                 float3 v3 = tv1 - raypos;
                 float3 n3 = cross(u3, v3);
 
-                float d1 = dot(n1, n2);
-                float d2 = dot(n1, n3);
+                //float d1 = dot(n1, n2);
+                //float d2 = dot(n1, n3);
+                float d1 = n1.x * n2.x + n1.y * n2.y + n1.z * n2.z;
+                float d2 = n1.x * n3.x + n1.y * n3.y + n1.z * n3.z;
 
                 if (!(d1 < 0.0f) && !(d2 < 0.0f)) {
+                    end = i;
                     stop = true;
                     break;
                 }
@@ -152,14 +154,14 @@ impl Triangle {
     }
 }
 
-// this only exists to store the camera's info in a nice little package.
+// this only exists to store the camera's info.
 pub struct Camera {
     pos: Vec3f, // x y z
     rot: Vec3f, // pitch roll yaw
     fov: f32,
 }
 
-// there once was a struct called `Geometry` but I have killed him because he was fucking useless.
+// there once was a struct called `Geometry` but i have killed him because he was fucking useless.
 fn origin_to_camera(geometry: &Vec<Triangle>, camera: &Camera) -> Vec<Triangle> {
     let origin = camera.pos;
     let _rotation = camera.rot;
@@ -172,31 +174,24 @@ fn origin_to_camera(geometry: &Vec<Triangle>, camera: &Camera) -> Vec<Triangle> 
     newgeo
 }
 
-// not what it sounds like but it converts the geomtry (a buncha triangles) into a vector with the
-// triangles v1x v1y v1z v2x v2y and so on consecutively in the vector so that the gpu kernel has a
-// nice little vector of f32s to take in
-fn geometry_to_points(geometry: &Vec<Triangle>) -> Vec<f32> {
-    let mut output: Vec<f32> = Vec::new();
+// converts your geometry into a vector of 3 component float (f32 in rust) vectors with each vertex
+// consecutive ig.
+fn geometry_to_points(geometry: &Vec<Triangle>) -> Vec<Float3> {
+    let mut output: Vec<Float3> = Vec::new();
     for triangle in geometry {
         output.extend([
-            triangle.v1.x,
-            triangle.v1.y,
-            triangle.v1.z,
-            triangle.v2.x,
-            triangle.v2.y,
-            triangle.v2.z,
-            triangle.v3.x,
-            triangle.v3.y,
-            triangle.v3.z,
+            Float3::new(triangle.v1.x, triangle.v1.y, triangle.v1.z),
+            Float3::new(triangle.v2.x, triangle.v2.y, triangle.v2.z),
+            Float3::new(triangle.v3.x, triangle.v3.y, triangle.v3.z),
         ]);
     }
     output
 }
 
-// using a struct for this because i need to store the ocl proque and buffers
+// using a struct for this because i need to store the ocl proque and buffers.
 pub struct Renderer {
     proque: ProQue,
-    tribuf: Buffer<f32>,
+    tribuf: Buffer<Float3>,
     outbuf: Buffer<u8>,
 }
 
@@ -208,7 +203,7 @@ impl Renderer {
             .build()
             .expect("could not build proque");
         let tribuf = proque
-            .create_buffer::<f32>()
+            .create_buffer::<Float3>()
             .expect("could not create triangle buffer");
         let outbuf = proque
             .create_buffer::<u8>()
@@ -319,10 +314,10 @@ mod tests {
 
         let triangle2 = Triangle::from_points(v12, v22, v32);
 
-        let geometry = vec![/*triangle1, */ triangle2];
+        let geometry = vec![triangle1, triangle2];
 
         let mut camera = Camera {
-            pos: Vec3f::new(5.0, 0.0, -10.0),
+            pos: Vec3f::new(5.0, 0.0, -5.0),
             rot: Vec3f::new(65.0, 0.0, 46.0),
             fov: 50.0,
         };
@@ -340,7 +335,7 @@ mod tests {
                     _ => {}
                 }
             }
-            camera.pos.x -= 1.0;
+            camera.pos.z -= 1.0;
 
             //let now = Instant::now();
             renderer.render(&mut window, &event_pump, &geometry, &camera)?;
