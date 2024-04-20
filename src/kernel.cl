@@ -1,11 +1,11 @@
-__kernel void render(
-__global float3 const* const tris,
-__global uchar* const out,
-__private float const fov,
-__private uint const width,
-__private uint const height,
-__private ulong const numtris)
-{
+__kernel void render (
+    __global float3 const* const tris,
+    __global uchar* const out,
+    __private float const fov,
+    __private uint const width,
+    __private uint const height,
+    __private ulong const numtris
+) {
     uint const idx = get_global_id(0);
     float const x = idx % width;
     float const y = idx / width;
