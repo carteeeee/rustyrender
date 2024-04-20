@@ -104,18 +104,27 @@ impl RotationMatrix {
             z: -angle.z.to_radians(),
         };
 
+        let xsin = a.x.sin();
+        let xcos = a.x.cos();
+
+        let ysin = a.y.sin();
+        let ycos = a.y.cos();
+
+        let zsin = a.z.sin();
+        let zcos = a.z.cos();
+
         Self {
-            aa: a.y.cos() * a.z.cos(),
-            ab: a.x.sin() * a.y.sin() * a.z.cos() - a.z.sin() * a.x.cos(),
-            ac: a.y.sin() * a.x.cos() * a.z.cos() + a.x.sin() * a.z.sin(),
+            aa: ycos * zcos,
+            ab: xsin * ysin * zcos - zsin * xcos,
+            ac: ysin * xcos * zcos + xsin * zsin,
 
-            ba: a.z.sin() * a.y.cos(),
-            bb: a.x.sin() * a.y.sin() * a.z.sin() + a.x.cos() * a.z.cos(),
-            bc: a.y.sin() * a.z.sin() * a.x.cos() - a.x.sin() * a.z.cos(),
+            ba: zsin * ycos,
+            bb: xsin * ysin * zsin + xcos * zcos,
+            bc: ysin * zsin * xcos - xsin * zcos,
 
-            ca: -a.y.sin(),
-            cb: a.x.sin() * a.y.cos(),
-            cc: a.x.cos() * a.y.cos(),
+            ca: -ysin,
+            cb: xsin * ycos,
+            cc: xcos * ycos,
         }
     }
 
