@@ -3,67 +3,10 @@ use ocl::{Buffer, ProQue};
 use sdl2::rect::Rect;
 use sdl2::video::Window;
 use std::ops::{Add, Div, Mul, Sub};
-// all of the rendering is done on the gpu using this kernel. see the below `render` function for
-// more details.
-static KERNEL_SRC: &'static str = r#"
-    __kernel void render(
-                __global float3 const* const tris,
-                __global uchar* const out,
-                __private float const fov,
-                __private uint const width,
-                __private uint const height,
-                __private ulong const numtris)
-    {
 
-        uint const idx = get_global_id(0);
-        float const x = idx % width;
-        float const y = idx / width;
-        float2 const edir = radians((float2)(
-            (x / (float)width - 0.5f) * fov,
-            (y / (float)height - 0.5f) * fov
-        ));
-        float3 const rdir = {
-            cos(edir.x) * cos(edir.y) * 0.1f,
-            sin(edir.x) * sin(edir.y) * 0.1f,
-            sin(edir.y) * 0.1f
-        };
-
-        bool stop = false;
-        uchar end = 100;
-        for (uchar i = 0; (i < 100) && !stop; i++) {
-            float3 const raypos = rdir * (float)i;
-            for (uint t = 0; (t < numtris) && !stop; t++) {
-                float3 const tv1 = tris[t * 3];
-                float3 const tv2 = tris[t * 3 + 1];
-                float3 const tv3 = tris[t * 3 + 2];
-
-                float3 u1 = tv1 - raypos;
-                float3 v1 = tv2 - raypos;
-                float3 n1 = cross(u1, v1);
-
-                float3 u2 = tv2 - raypos;
-                float3 v2 = tv3 - raypos;
-                float3 n2 = cross(u2, v2);
-
-                float3 u3 = tv3 - raypos;
-                float3 v3 = tv1 - raypos;
-                float3 n3 = cross(u3, v3);
-
-                //float d1 = dot(n1, n2);
-                //float d2 = dot(n1, n3);
-                float d1 = n1.x * n2.x + n1.y * n2.y + n1.z * n2.z;
-                float d2 = n1.x * n3.x + n1.y * n3.y + n1.z * n3.z;
-
-                if (!(d1 < 0.0f) && !(d2 < 0.0f)) {
-                    end = i;
-                    stop = true;
-                    break;
-                }
-            }
-        }
-        out[idx] = end;
-    }
-"#;
+// all the rendering stuffs is done in kernel.cl and then it goes to the cpu for other stuff idk
+// man
+static KERNEL_SRC: &'static str = include_str!("kernel.cl");
 
 // vector oh yeah!!! this is basically the type used for everything from 3d rotation to
 // position. addition and subtraction between Vec3fs is implemented and multiplication and division
@@ -317,7 +260,7 @@ mod tests {
         let geometry = vec![triangle1, triangle2];
 
         let mut camera = Camera {
-            pos: Vec3f::new(5.0, 0.0, -5.0),
+            pos: Vec3f::new(0.0, 0.0, 5.0),
             rot: Vec3f::new(65.0, 0.0, 46.0),
             fov: 50.0,
         };
@@ -335,7 +278,7 @@ mod tests {
                     _ => {}
                 }
             }
-            camera.pos.z -= 1.0;
+            camera.pos.z += 0.1;
 
             //let now = Instant::now();
             renderer.render(&mut window, &event_pump, &geometry, &camera)?;
