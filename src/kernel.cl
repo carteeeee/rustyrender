@@ -17,7 +17,7 @@ __kernel void render (
     )*0.01f;
 
     bool stop = false;
-    uint end = 255;
+    uint end = 1000;
     for (uint i = 0; (i < 1000) && !stop; i++) {
         float3 const raypos = rdir * (float)i;
         for (uint t = 0; (t < numtris) && !stop; t++) {
@@ -47,5 +47,5 @@ __kernel void render (
             }
         }
     }
-    out[idx] = 255-(end/1000.f)*255;
+    out[idx] = 255-(end/1000.f)*256;
 }

@@ -82,6 +82,52 @@ impl Div<f32> for Vec3f {
     }
 }
 
+// rotation matrix yummy
+struct RotationMatrix {
+    aa: f32,
+    ab: f32,
+    ac: f32,
+    ba: f32,
+    bb: f32,
+    bc: f32,
+    ca: f32,
+    cb: f32,
+    cc: f32,
+}
+
+impl RotationMatrix {
+    fn from_euler(angle: Vec3f) -> Self {
+        // pitch roll yaw
+        let a = Vec3f {
+            x: -angle.x.to_radians(),
+            y: -angle.y.to_radians(),
+            z: -angle.z.to_radians(),
+        };
+
+        Self {
+            aa: a.y.cos() * a.z.cos(),
+            ab: a.x.sin() * a.y.sin() * a.z.cos() - a.z.sin() * a.x.cos(),
+            ac: a.y.sin() * a.x.cos() * a.z.cos() + a.x.sin() * a.z.sin(),
+
+            ba: a.z.sin() * a.y.cos(),
+            bb: a.x.sin() * a.y.sin() * a.z.sin() + a.x.cos() * a.z.cos(),
+            bc: a.y.sin() * a.z.sin() * a.x.cos() - a.x.sin() * a.z.cos(),
+
+            ca: -a.y.sin(),
+            cb: a.x.sin() * a.y.cos(),
+            cc: a.x.cos() * a.y.cos(),
+        }
+    }
+
+    fn rotate_vector(&self, v: Vec3f) -> Vec3f {
+        Vec3f {
+            x: self.aa * v.x + self.ab * v.y + self.ac * v.z,
+            y: self.ba * v.x + self.bb * v.y + self.bc * v.z,
+            z: self.ca * v.x + self.cb * v.y + self.cc * v.z,
+        }
+    }
+}
+
 // wow triangles so cool!! this is a simple struct for storing the data of a triangle, i may add
 // color soon:tm:
 #[derive(Copy, Clone, Debug)]
@@ -107,12 +153,14 @@ pub struct Camera {
 // there once was a struct called `Geometry` but i have killed him because he was fucking useless.
 fn origin_to_camera(geometry: &Vec<Triangle>, camera: &Camera) -> Vec<Triangle> {
     let origin = camera.pos;
-    let _rotation = camera.rot;
+    let rotation = camera.rot;
+
+    let rm = RotationMatrix::from_euler(rotation);
     let mut newgeo = geometry.clone();
     for triangle in &mut newgeo {
-        triangle.v1 = triangle.v1 - origin;
-        triangle.v2 = triangle.v2 - origin;
-        triangle.v3 = triangle.v3 - origin;
+        triangle.v1 = rm.rotate_vector(triangle.v1 - origin);
+        triangle.v2 = rm.rotate_vector(triangle.v2 - origin);
+        triangle.v3 = rm.rotate_vector(triangle.v3 - origin);
     }
     newgeo
 }
@@ -261,7 +309,7 @@ mod tests {
 
         let mut camera = Camera {
             pos: Vec3f::new(0.0, 0.0, 5.0),
-            rot: Vec3f::new(65.0, 0.0, 46.0),
+            rot: Vec3f::new(0.0, 0.0, 0.0),
             fov: 50.0,
         };
 
@@ -278,7 +326,17 @@ mod tests {
                     _ => {}
                 }
             }
-            camera.pos.z += 0.1;
+            let mouse_state = event_pump.mouse_state();
+
+            camera.rot.x = (mouse_state.y() - height as i32 / 2) as f32 / 10.;
+            camera.rot.y = (mouse_state.x() - width as i32 / 2) as f32 / 10.;
+
+            if mouse_state.left() {
+                camera.pos.z += 0.5;
+            }
+            if mouse_state.right() {
+                camera.pos.z -= 0.5;
+            }
 
             //let now = Instant::now();
             renderer.render(&mut window, &event_pump, &geometry, &camera)?;
